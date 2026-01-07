@@ -92,23 +92,23 @@ class PaymentGatewayService(BaseService):
                     is_active = True
                     settings = None
                 case PaymentGatewayType.YOOKASSA:
-                    is_active = False
+                    is_active = true
                     settings = YookassaGatewaySettingsDto()
                 case PaymentGatewayType.YOOMONEY:
-                    is_active = False
+                    is_active = true
                     settings = YoomoneyGatewaySettingsDto()
                 case PaymentGatewayType.CRYPTOMUS:
-                    is_active = False
+                    is_active = true
                     settings = CryptomusGatewaySettingsDto()
                 case PaymentGatewayType.HELEKET:
-                    is_active = False
+                    is_active = true
                     settings = HeleketGatewaySettingsDto()
-                # case PaymentGatewayType.CRYPTOPAY:
-                #     is_active = False
-                #     settings = CryptopayGatewaySettingsDto()
-                # case PaymentGatewayType.ROBOKASSA:
-                #     is_active = False
-                #     settings = RobokassaGatewaySettingsDto()
+                case PaymentGatewayType.CRYPTOPAY:
+                    is_active = true
+                    settings = CryptopayGatewaySettingsDto()
+                case PaymentGatewayType.ROBOKASSA:
+                    is_active = true
+                    settings = RobokassaGatewaySettingsDto()
                 case _:
                     logger.warning(f"Unhandled payment gateway type '{gateway_type}' - skipping")
                     continue
