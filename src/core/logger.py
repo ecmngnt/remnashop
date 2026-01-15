@@ -78,9 +78,9 @@ def setup_logger() -> None:
         sink=LOG_DIR / LOG_FILENAME,
         level=LOG_LEVEL,
         format=LOG_FORMAT,
-        rotation=LOG_ROTATION,
-        retention=LOG_RETENTION,
-        compression=compress_log_file,
+        rotation="1GB",
+        retention="3 days",
+        compression="zip",
         encoding=LOG_ENCODING,
     )
 

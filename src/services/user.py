@@ -63,8 +63,9 @@ class UserService(BaseService):
             ),
         )
         db_user = User(**user.model_dump())
-        db_created_user = await self.uow.repository.users.create(db_user)
-        await self.uow.commit()
+
+        async with self.uow:
+            db_created_user = await self.uow.repository.users.create(db_user)
 
         await self.clear_user_cache(user.telegram_id)
         logger.info(f"Created new user '{user.telegram_id}'")
@@ -82,8 +83,9 @@ class UserService(BaseService):
             language=self.config.default_locale,
         )
         db_user = User(**user.model_dump())
-        db_created_user = await self.uow.repository.users.create(db_user)
-        await self.uow.commit()
+
+        async with self.uow:
+            db_created_user = await self.uow.repository.users.create(db_user)
 
         await self.clear_user_cache(user.telegram_id)
         logger.info(f"Created new user '{user.telegram_id}' from panel")
@@ -91,7 +93,8 @@ class UserService(BaseService):
 
     @redis_cache(prefix="get_user", ttl=TIME_5M)
     async def get(self, telegram_id: int) -> Optional[UserDto]:
-        db_user = await self.uow.repository.users.get(telegram_id)
+        async with self.uow:
+            db_user = await self.uow.repository.users.get(telegram_id)
 
         if db_user:
             logger.debug(f"Retrieved user '{telegram_id}'")
@@ -101,10 +104,11 @@ class UserService(BaseService):
         return UserDto.from_model(db_user)
 
     async def update(self, user: UserDto) -> Optional[UserDto]:
-        db_updated_user = await self.uow.repository.users.update(
-            telegram_id=user.telegram_id,
-            **user.prepare_changed_data(),
-        )
+        async with self.uow:
+            db_updated_user = await self.uow.repository.users.update(
+                telegram_id=user.telegram_id,
+                **user.prepare_changed_data(),
+            )
 
         if db_updated_user:
             await self.clear_user_cache(db_updated_user.telegram_id)
@@ -156,7 +160,8 @@ class UserService(BaseService):
         return await self.update(user)
 
     async def delete(self, user: UserDto) -> bool:
-        result = await self.uow.repository.users.delete(user.telegram_id)
+        async with self.uow:
+            result = await self.uow.repository.users.delete(user.telegram_id)
 
         if result:
             await self.clear_user_cache(user.telegram_id)
@@ -166,62 +171,83 @@ class UserService(BaseService):
         return result
 
     async def get_by_partial_name(self, query: str) -> list[UserDto]:
-        db_users = await self.uow.repository.users.get_by_partial_name(query)
+        async with self.uow:
+            db_users = await self.uow.repository.users.get_by_partial_name(query)
+
         logger.debug(f"Retrieved '{len(db_users)}' users for query '{query}'")
         return UserDto.from_model_list(db_users)
 
     async def get_by_referral_code(self, referral_code: str) -> Optional[UserDto]:
-        user = await self.uow.repository.users.get_by_referral_code(referral_code)
+        async with self.uow:
+            user = await self.uow.repository.users.get_by_referral_code(referral_code)
+
         return UserDto.from_model(user)
 
     @redis_cache(prefix="users_count", ttl=TIME_10M)
     async def count(self) -> int:
-        count = await self.uow.repository.users.count()
+        async with self.uow:
+            count = await self.uow.repository.users.count()
+
         logger.debug(f"Total users count: '{count}'")
         return count
 
     @redis_cache(prefix="get_by_role", ttl=TIME_10M)
     async def get_by_role(self, role: UserRole) -> list[UserDto]:
-        db_users = await self.uow.repository.users.filter_by_role(role)
+        async with self.uow:
+            db_users = await self.uow.repository.users.filter_by_role(role)
+
         logger.debug(f"Retrieved '{len(db_users)}' users with role '{role}'")
         return UserDto.from_model_list(db_users)
 
     @redis_cache(prefix="get_blocked_users", ttl=TIME_10M)
     async def get_blocked_users(self) -> list[UserDto]:
-        db_users = await self.uow.repository.users.filter_by_blocked(blocked=True)
+        async with self.uow:
+            db_users = await self.uow.repository.users.filter_by_blocked(blocked=True)
+
         logger.debug(f"Retrieved '{len(db_users)}' blocked users")
         return UserDto.from_model_list(list(reversed(db_users)))
 
     @redis_cache(prefix="get_all", ttl=TIME_10M)
     async def get_all(self) -> list[UserDto]:
-        db_users = await self.uow.repository.users.get_all()
+        async with self.uow:
+            db_users = await self.uow.repository.users.get_all()
+
         logger.debug(f"Retrieved '{len(db_users)}' users")
         return UserDto.from_model_list(db_users)
 
     async def set_block(self, user: UserDto, blocked: bool) -> None:
         user.is_blocked = blocked
-        await self.uow.repository.users.update(
-            user.telegram_id,
-            **user.prepare_changed_data(),
-        )
+
+        async with self.uow:
+            await self.uow.repository.users.update(
+                user.telegram_id,
+                **user.prepare_changed_data(),
+            )
+
         await self.clear_user_cache(user.telegram_id)
         logger.info(f"Set block={blocked} for user '{user.telegram_id}'")
 
     async def set_bot_blocked(self, user: UserDto, blocked: bool) -> None:
         user.is_bot_blocked = blocked
-        await self.uow.repository.users.update(
-            user.telegram_id,
-            **user.prepare_changed_data(),
-        )
+
+        async with self.uow:
+            await self.uow.repository.users.update(
+                user.telegram_id,
+                **user.prepare_changed_data(),
+            )
+
         await self.clear_user_cache(user.telegram_id)
         logger.info(f"Set bot_blocked={blocked} for user '{user.telegram_id}'")
 
     async def set_role(self, user: UserDto, role: UserRole) -> None:
         user.role = role
-        await self.uow.repository.users.update(
-            user.telegram_id,
-            **user.prepare_changed_data(),
-        )
+
+        async with self.uow:
+            await self.uow.repository.users.update(
+                user.telegram_id,
+                **user.prepare_changed_data(),
+            )
+
         await self.clear_user_cache(user.telegram_id)
         logger.info(f"Set role='{role.name}' for user '{user.telegram_id}'")
 
@@ -231,11 +257,12 @@ class UserService(BaseService):
         await self._add_to_recent_activity(RecentActivityUsersKey(), telegram_id)
 
     async def get_recent_registered_users(self) -> list[UserDto]:
-        db_users = await self.uow.repository.users._get_many(
-            User,
-            order_by=User.id.asc(),
-            limit=RECENT_REGISTERED_MAX_COUNT,
-        )
+        async with self.uow:
+            db_users = await self.uow.repository.users._get_many(
+                User,
+                order_by=User.id.asc(),
+                limit=RECENT_REGISTERED_MAX_COUNT,
+            )
 
         logger.debug(f"Retrieved '{len(db_users)}' recent registered users")
         return UserDto.from_model_list(list(reversed(db_users)))
@@ -314,26 +341,32 @@ class UserService(BaseService):
         return found_users
 
     async def set_current_subscription(self, telegram_id: int, subscription_id: int) -> None:
-        await self.uow.repository.users.update(
-            telegram_id=telegram_id,
-            current_subscription_id=subscription_id,
-        )
+        async with self.uow:
+            await self.uow.repository.users.update(
+                telegram_id=telegram_id,
+                current_subscription_id=subscription_id,
+            )
+
         await self.clear_user_cache(telegram_id)
         logger.info(f"Set current_subscription='{subscription_id}' for user '{telegram_id}'")
 
     async def delete_current_subscription(self, telegram_id: int) -> None:
-        await self.uow.repository.users.update(
-            telegram_id=telegram_id,
-            current_subscription_id=None,
-        )
+        async with self.uow:
+            await self.uow.repository.users.update(
+                telegram_id=telegram_id,
+                current_subscription_id=None,
+            )
+
         await self.clear_user_cache(telegram_id)
         logger.info(f"Delete current subscription for user '{telegram_id}'")
 
     async def add_points(self, user: Union[BaseUserDto, UserDto], points: int) -> None:
-        await self.uow.repository.users.update(
-            telegram_id=user.telegram_id,
-            points=user.points + points,
-        )
+        async with self.uow:
+            await self.uow.repository.users.update(
+                telegram_id=user.telegram_id,
+                points=user.points + points,
+            )
+
         await self.clear_user_cache(user.telegram_id)
         logger.info(f"Add '{points}' points for user '{user.telegram_id}'")
 

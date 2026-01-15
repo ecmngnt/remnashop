@@ -1,4 +1,4 @@
-from typing import Any, Optional, Type, TypeVar, Union, cast
+from typing import Any, Optional, Type, TypeVar, Union
 
 from sqlalchemy import ColumnExpressionArgument, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,7 +42,8 @@ class BaseRepository:
         await self.session.delete(instance)
 
     async def _get_one(self, model: ModelType[T], *conditions: ConditionType) -> Optional[T]:
-        result = await self.session.execute(select(model).where(*conditions))
+        stmt = select(model).where(*conditions)
+        result = await self.session.execute(stmt)
         return result.unique().scalar_one_or_none()
 
     async def _get_many(
@@ -78,23 +79,16 @@ class BaseRepository:
         **kwargs: Any,
     ) -> Optional[T]:
         if not kwargs:
-            if not load_result:
-                return None
-            return cast(Optional[T], await self._get_one(model, *conditions))
+            return await self._get_one(model, *conditions) if load_result else None
 
-        query = update(model).where(*conditions).values(**kwargs)
+        stmt = update(model).where(*conditions).values(**kwargs)
 
         if load_result:
-            query = query.returning(model.id)  # type: ignore [attr-defined]
+            stmt = stmt.returning(model)
+            result = await self.session.execute(stmt)
+            return result.scalar_one_or_none()
 
-        result = await self.session.execute(query)
-        obj_id: Optional[int] = result.scalar_one_or_none()
-
-        if obj_id is not None and load_result:
-            db_obj = await self.session.get(model, obj_id)
-            await self.session.refresh(db_obj)
-            return db_obj
-
+        await self.session.execute(stmt)
         return None
 
     async def _delete(self, model: ModelType[T], *conditions: ConditionType) -> int:

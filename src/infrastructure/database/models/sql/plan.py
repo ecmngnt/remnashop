@@ -56,7 +56,7 @@ class Plan(BaseSql, TimestampMixin):
     )
     allowed_user_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), nullable=True)
     internal_squads: Mapped[list[UUID]] = mapped_column(ARRAY(PG_UUID), nullable=False)
-    external_squad: Mapped[Optional[UUID]] = mapped_column(ARRAY(PG_UUID), nullable=True)
+    external_squad: Mapped[Optional[UUID]] = mapped_column(PG_UUID, nullable=True)
 
     durations: Mapped[list["PlanDuration"]] = relationship(
         "PlanDuration",

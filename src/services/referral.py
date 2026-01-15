@@ -71,13 +71,14 @@ class ReferralService(BaseService):
         referred: UserDto,
         level: ReferralLevel,
     ) -> ReferralDto:
-        referral = await self.uow.repository.referrals.create_referral(
-            Referral(
-                referrer_telegram_id=referrer.telegram_id,
-                referred_telegram_id=referred.telegram_id,
-                level=level,
+        async with self.uow:
+            referral = await self.uow.repository.referrals.create_referral(
+                Referral(
+                    referrer_telegram_id=referrer.telegram_id,
+                    referred_telegram_id=referred.telegram_id,
+                    level=level,
+                )
             )
-        )
 
         await self.user_service.clear_user_cache(referrer.telegram_id)
         await self.user_service.clear_user_cache(referred.telegram_id)
@@ -85,20 +86,28 @@ class ReferralService(BaseService):
         return ReferralDto.from_model(referral)  # type: ignore[return-value]
 
     async def get_referral_by_referred(self, telegram_id: int) -> Optional[ReferralDto]:
-        referral = await self.uow.repository.referrals.get_referral_by_referred(telegram_id)
+        async with self.uow:
+            referral = await self.uow.repository.referrals.get_referral_by_referred(telegram_id)
+
         return ReferralDto.from_model(referral) if referral else None
 
     async def get_referrals_by_referrer(self, telegram_id: int) -> List[ReferralDto]:
-        referrals = await self.uow.repository.referrals.get_referrals_by_referrer(telegram_id)
+        async with self.uow:
+            referrals = await self.uow.repository.referrals.get_referrals_by_referrer(telegram_id)
+
         return ReferralDto.from_model_list(referrals)
 
     async def get_referral_count(self, telegram_id: int) -> int:
-        count = await self.uow.repository.referrals.count_referrals_by_referrer(telegram_id)
+        async with self.uow:
+            count = await self.uow.repository.referrals.count_referrals_by_referrer(telegram_id)
+
         logger.debug(f"Retrieved counted '{count}' referrals for user '{telegram_id}'")
         return count
 
     async def get_reward_count(self, telegram_id: int) -> int:
-        count = await self.uow.repository.referrals.count_rewards_by_referrer(telegram_id)
+        async with self.uow:
+            count = await self.uow.repository.referrals.count_rewards_by_referrer(telegram_id)
+
         logger.debug(f"Retrieved counted '{count}' rewards for user '{telegram_id}'")
         return count
 
@@ -107,10 +116,12 @@ class ReferralService(BaseService):
         telegram_id: int,
         reward_type: ReferralRewardType,
     ) -> int:
-        total_amount = await self.uow.repository.referrals.sum_rewards_by_user(
-            telegram_id,
-            reward_type,
-        )
+        async with self.uow:
+            total_amount = await self.uow.repository.referrals.sum_rewards_by_user(
+                telegram_id,
+                reward_type,
+            )
+
         logger.debug(
             f"Retrieved calculated total rewards amount as '{total_amount}' "
             f"for user 'user_telegram_id' for type '{reward_type.name}'"
@@ -124,30 +135,38 @@ class ReferralService(BaseService):
         type: ReferralRewardType,
         amount: int,
     ) -> ReferralRewardDto:
-        reward = await self.uow.repository.referrals.create_reward(
-            ReferralReward(
-                referral_id=referral_id,
-                user_telegram_id=user_telegram_id,
-                type=type,
-                amount=amount,
-                is_issued=False,
+        async with self.uow:
+            reward = await self.uow.repository.referrals.create_reward(
+                ReferralReward(
+                    referral_id=referral_id,
+                    user_telegram_id=user_telegram_id,
+                    type=type,
+                    amount=amount,
+                    is_issued=False,
+                )
             )
-        )
+
         logger.info(f"ReferralReward '{referral_id} created, user '{user_telegram_id}'")
         return ReferralRewardDto.from_model(reward)  # type: ignore[return-value]
 
     async def get_rewards_by_user(self, telegram_id: int) -> List[ReferralRewardDto]:
-        rewards = await self.uow.repository.referrals.get_rewards_by_user(telegram_id)
+        async with self.uow:
+            rewards = await self.uow.repository.referrals.get_rewards_by_user(telegram_id)
+
         return ReferralRewardDto.from_model_list(rewards)
 
     async def get_rewards_by_referral(self, referral_id: int) -> List[ReferralRewardDto]:
-        rewards = await self.uow.repository.referrals.get_rewards_by_referral(referral_id)
+        async with self.uow:
+            rewards = await self.uow.repository.referrals.get_rewards_by_referral(referral_id)
+
         return ReferralRewardDto.from_model_list(rewards)
 
     #
 
     async def mark_reward_as_issued(self, reward_id: int) -> None:
-        await self.uow.repository.referrals.update_reward(reward_id, is_issued=True)
+        async with self.uow:
+            await self.uow.repository.referrals.update_reward(reward_id, is_issued=True)
+
         logger.info(f"Marked reward '{reward_id}' as issued")
 
     async def handle_referral(self, user: UserDto, code: Optional[str]) -> None:

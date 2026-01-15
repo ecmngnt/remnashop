@@ -113,24 +113,27 @@ class PaymentGatewayService(BaseService):
                     logger.warning(f"Unhandled payment gateway type '{gateway_type}' - skipping")
                     continue
 
-            order_index = await self.uow.repository.gateways.get_max_index()
-            order_index = (order_index or 0) + 1
+            async with self.uow:
+                order_index = await self.uow.repository.gateways.get_max_index()
 
-            payment_gateway = PaymentGatewayDto(
-                order_index=order_index,
-                type=gateway_type,
-                currency=Currency.from_gateway_type(gateway_type),
-                is_active=is_active,
-                settings=settings,
-            )
+                order_index = (order_index or 0) + 1
 
-            db_payment_gateway = PaymentGateway(**payment_gateway.model_dump())
-            db_payment_gateway = await self.uow.repository.gateways.create(db_payment_gateway)
+                payment_gateway = PaymentGatewayDto(
+                    order_index=order_index,
+                    type=gateway_type,
+                    currency=Currency.from_gateway_type(gateway_type),
+                    is_active=is_active,
+                    settings=settings,
+                )
+
+                db_payment_gateway = PaymentGateway(**payment_gateway.model_dump())
+                db_payment_gateway = await self.uow.repository.gateways.create(db_payment_gateway)
 
             logger.info(f"Payment gateway '{gateway_type}' created")
 
     async def get(self, gateway_id: int) -> Optional[PaymentGatewayDto]:
-        db_gateway = await self.uow.repository.gateways.get(gateway_id)
+        async with self.uow:
+            db_gateway = await self.uow.repository.gateways.get(gateway_id)
 
         if not db_gateway:
             logger.warning(f"Payment gateway '{gateway_id}' not found")
@@ -140,7 +143,8 @@ class PaymentGatewayService(BaseService):
         return PaymentGatewayDto.from_model(db_gateway, decrypt=True)
 
     async def get_by_type(self, gateway_type: PaymentGatewayType) -> Optional[PaymentGatewayDto]:
-        db_gateway = await self.uow.repository.gateways.get_by_type(gateway_type)
+        async with self.uow:
+            db_gateway = await self.uow.repository.gateways.get_by_type(gateway_type)
 
         if not db_gateway:
             logger.warning(f"Payment gateway of type '{gateway_type}' not found")
@@ -150,7 +154,9 @@ class PaymentGatewayService(BaseService):
         return PaymentGatewayDto.from_model(db_gateway, decrypt=True)
 
     async def get_all(self, sorted: bool = False) -> list[PaymentGatewayDto]:
-        db_gateways = await self.uow.repository.gateways.get_all(sorted)
+        async with self.uow:
+            db_gateways = await self.uow.repository.gateways.get_all(sorted)
+
         logger.debug(f"Retrieved '{len(db_gateways)}' payment gateways")
         return PaymentGatewayDto.from_model_list(db_gateways, decrypt=False)
 
@@ -160,10 +166,11 @@ class PaymentGatewayService(BaseService):
         if gateway.settings and gateway.settings.changed_data:
             updated_data["settings"] = gateway.settings.prepare_init_data(encrypt=True)
 
-        db_updated_gateway = await self.uow.repository.gateways.update(
-            gateway_id=gateway.id,  # type: ignore[arg-type]
-            **updated_data,
-        )
+        async with self.uow:
+            db_updated_gateway = await self.uow.repository.gateways.update(
+                gateway_id=gateway.id,  # type: ignore[arg-type]
+                **updated_data,
+            )
 
         if db_updated_gateway:
             logger.info(f"Payment gateway '{gateway.type}' updated successfully")
@@ -176,29 +183,37 @@ class PaymentGatewayService(BaseService):
         return PaymentGatewayDto.from_model(db_updated_gateway, decrypt=True)
 
     async def filter_active(self, is_active: bool = True) -> list[PaymentGatewayDto]:
-        db_gateways = await self.uow.repository.gateways.filter_active(is_active)
+        async with self.uow:
+            db_gateways = await self.uow.repository.gateways.filter_active(is_active)
+
         logger.debug(f"Filtered active gateways: '{is_active}', found '{len(db_gateways)}'")
         return PaymentGatewayDto.from_model_list(db_gateways, decrypt=False)
 
     async def move_gateway_up(self, gateway_id: int) -> bool:
-        db_gateways = await self.uow.repository.gateways.get_all()
-        db_gateways.sort(key=lambda p: p.order_index)
+        async with self.uow:
+            db_gateways = await self.uow.repository.gateways.get_all()
+            db_gateways.sort(key=lambda p: p.order_index)
 
-        index = next((i for i, p in enumerate(db_gateways) if p.id == gateway_id), None)
-        if index is None:
-            logger.warning(f"Payment gateway with ID '{gateway_id}' not found for move operation")
-            return False
+            index = next((i for i, p in enumerate(db_gateways) if p.id == gateway_id), None)
+            if index is None:
+                logger.warning(
+                    f"Payment gateway with ID '{gateway_id}' not found for move operation"
+                )
+                return False
 
-        if index == 0:
-            gateway = db_gateways.pop(0)
-            db_gateways.append(gateway)
-            logger.debug(f"Payment gateway '{gateway_id}' moved from top to bottom")
-        else:
-            db_gateways[index - 1], db_gateways[index] = db_gateways[index], db_gateways[index - 1]
-            logger.debug(f"Payment gateway '{gateway_id}' moved up one position")
+            if index == 0:
+                gateway = db_gateways.pop(0)
+                db_gateways.append(gateway)
+                logger.debug(f"Payment gateway '{gateway_id}' moved from top to bottom")
+            else:
+                db_gateways[index - 1], db_gateways[index] = (
+                    db_gateways[index],
+                    db_gateways[index - 1],
+                )
+                logger.debug(f"Payment gateway '{gateway_id}' moved up one position")
 
-        for i, gateway in enumerate(db_gateways, start=1):
-            gateway.order_index = i
+            for i, gateway in enumerate(db_gateways, start=1):
+                gateway.order_index = i
 
         logger.info(f"Payment gateway '{gateway_id}' reorder successfully")
         return True

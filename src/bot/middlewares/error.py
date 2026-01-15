@@ -4,6 +4,12 @@ from typing import Any, Awaitable, Callable, Optional, cast
 from aiogram.types import ErrorEvent, TelegramObject
 from aiogram.types import User as AiogramUser
 from aiogram.utils.formatting import Text
+from aiogram_dialog.api.exceptions import (
+    InvalidStackIdError,
+    OutdatedIntent,
+    UnknownIntent,
+    UnknownState,
+)
 from dishka import AsyncContainer
 
 from src.bot.keyboards import get_user_keyboard
@@ -29,8 +35,19 @@ class ErrorMiddleware(EventTypedMiddleware):
         data: dict[str, Any],
     ) -> Any:
         aiogram_user: Optional[AiogramUser] = self._get_aiogram_user(event)
-
         error_event = cast(ErrorEvent, event)
+
+        if isinstance(
+            error_event.exception,
+            (
+                InvalidStackIdError,
+                OutdatedIntent,
+                UnknownIntent,
+                UnknownState,
+            ),
+        ):
+            return await handler(event, data)
+
         error = error_event.exception
         traceback_str = traceback.format_exc()
         error_type_name = type(error).__name__
@@ -59,7 +76,7 @@ class ErrorMiddleware(EventTypedMiddleware):
                     "user": True if user else False,
                     "user_id": str(user.telegram_id) if user else False,
                     "user_name": user.name if user else False,
-                    "username": user.username if user else False,
+                    "username": user.username if user and user.username else False,
                     "error": f"{error_type_name}: {error_message.as_html()}",
                 },
                 reply_markup=reply_markup,

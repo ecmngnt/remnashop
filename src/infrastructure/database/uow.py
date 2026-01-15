@@ -8,18 +8,22 @@ from .repositories import RepositoriesFacade
 
 
 class UnitOfWork:
-    session_pool: async_sessionmaker[AsyncSession]
-    session: Optional[AsyncSession] = None
+    def __init__(self, session_maker: async_sessionmaker[AsyncSession]) -> None:
+        self.session_maker = session_maker
+        self.session: Optional[AsyncSession] = None
+        self._repository: Optional[RepositoriesFacade] = None
 
-    repository: RepositoriesFacade
-
-    def __init__(self, session_pool: async_sessionmaker[AsyncSession]) -> None:
-        self.session_pool = session_pool
+    @property
+    def repository(self) -> RepositoriesFacade:
+        if self._repository is None:
+            raise RuntimeError("SQL session not started. Use 'async with uow:'")
+        return self._repository
 
     async def __aenter__(self) -> Self:
-        self.session = self.session_pool()
-        self.repository = RepositoriesFacade(session=self.session)
-        logger.debug(f"Opened session '{id(self.session)}'")
+        self.session = self.session_maker()
+        self._repository = RepositoriesFacade(session=self.session)
+
+        logger.debug(f"SQL session started. Session ID: '{id(self.session)}'")
         return self
 
     async def __aexit__(
@@ -31,19 +35,18 @@ class UnitOfWork:
         if self.session is None:
             return
 
-        session_id = id(self.session)
         try:
-            if exc_type is None:
-                await self.commit()
+            if exc_type:
+                await self.session.rollback()
+                logger.warning(f"SQL transaction rolled back due to error: '{exc_val}'")
             else:
-                logger.warning(
-                    f"Exception detected '{exc_val}', rolling back session '{session_id}'"
-                )
-                await self.rollback()
+                await self.session.commit()
+                logger.debug("SQL transaction committed successfully")
         finally:
             await self.session.close()
-            logger.debug(f"Closed session '{session_id}'")
             self.session = None
+            self._repository = None
+            logger.debug("SQL session closed")
 
     async def commit(self) -> None:
         if self.session:

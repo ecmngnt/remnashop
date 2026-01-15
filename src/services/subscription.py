@@ -55,13 +55,16 @@ class SubscriptionService(BaseService):
         data["plan"] = subscription.plan.model_dump(mode="json")
 
         db_subscription = Subscription(**data, user_telegram_id=user.telegram_id)
-        db_created_subscription = await self.uow.repository.subscriptions.create(db_subscription)
+
+        async with self.uow:
+            db_created_subscription = await self.uow.repository.subscriptions.create(
+                db_subscription
+            )
 
         await self.user_service.set_current_subscription(
             telegram_id=user.telegram_id,
             subscription_id=db_created_subscription.id,
         )
-        await self.uow.commit()
 
         await self.clear_subscription_cache(db_subscription.id, db_subscription.user_telegram_id)
         logger.info(f"Created subscription '{db_subscription.id}' for user '{user.telegram_id}'")
@@ -69,7 +72,8 @@ class SubscriptionService(BaseService):
 
     @redis_cache(prefix="get_subscription", ttl=TIME_5M)
     async def get(self, subscription_id: int) -> Optional[SubscriptionDto]:
-        db_subscription = await self.uow.repository.subscriptions.get(subscription_id)
+        async with self.uow:
+            db_subscription = await self.uow.repository.subscriptions.get(subscription_id)
 
         if db_subscription:
             logger.debug(f"Retrieved subscription '{subscription_id}'")
@@ -80,16 +84,17 @@ class SubscriptionService(BaseService):
 
     @redis_cache(prefix="get_current_subscription", ttl=TIME_1M)
     async def get_current(self, telegram_id: int) -> Optional[SubscriptionDto]:
-        db_user = await self.uow.repository.users.get(telegram_id)
+        async with self.uow:
+            db_user = await self.uow.repository.users.get(telegram_id)
 
-        if not db_user or not db_user.current_subscription_id:
-            logger.debug(
-                f"Current subscription check: User '{telegram_id}' has no active subscription"
-            )
-            return None
+            if not db_user or not db_user.current_subscription_id:
+                logger.debug(
+                    f"Current subscription check: User '{telegram_id}' has no active subscription"
+                )
+                return None
 
-        subscription_id = db_user.current_subscription_id
-        db_active_subscription = await self.uow.repository.subscriptions.get(subscription_id)
+            subscription_id = db_user.current_subscription_id
+            db_active_subscription = await self.uow.repository.subscriptions.get(subscription_id)
 
         if db_active_subscription:
             logger.debug(
@@ -105,12 +110,16 @@ class SubscriptionService(BaseService):
         return SubscriptionDto.from_model(db_active_subscription)
 
     async def get_all_by_user(self, telegram_id: int) -> list[SubscriptionDto]:
-        db_subscriptions = await self.uow.repository.subscriptions.get_all_by_user(telegram_id)
+        async with self.uow:
+            db_subscriptions = await self.uow.repository.subscriptions.get_all_by_user(telegram_id)
+
         logger.debug(f"Retrieved '{len(db_subscriptions)}' subscriptions for user '{telegram_id}'")
         return SubscriptionDto.from_model_list(db_subscriptions)
 
     async def get_all(self) -> list[SubscriptionDto]:
-        db_subscriptions = await self.uow.repository.subscriptions.get_all()
+        async with self.uow:
+            db_subscriptions = await self.uow.repository.subscriptions.get_all()
+
         logger.debug(f"Retrieved '{len(db_subscriptions)}' total subscriptions")
         return SubscriptionDto.from_model_list(db_subscriptions)
 
@@ -120,12 +129,11 @@ class SubscriptionService(BaseService):
         if subscription.plan.changed_data or "plan" in data:
             data["plan"] = subscription.plan.model_dump(mode="json")
 
-        db_updated_subscription = await self.uow.repository.subscriptions.update(
-            subscription_id=subscription.id,  # type: ignore[arg-type]
-            **data,
-        )
-
-        await self.uow.commit()
+        async with self.uow:
+            db_updated_subscription = await self.uow.repository.subscriptions.update(
+                subscription_id=subscription.id,  # type: ignore[arg-type]
+                **data,
+            )
 
         if db_updated_subscription:
             await self.clear_subscription_cache(
@@ -150,7 +158,9 @@ class SubscriptionService(BaseService):
             Subscription.status != SubscriptionStatus.DELETED,
         )
 
-        count = await self.uow.repository.subscriptions._count(Subscription, conditions)
+        async with self.uow:
+            count = await self.uow.repository.subscriptions._count(Subscription, conditions)
+
         return count > 0
 
     async def clear_subscription_cache(self, subscription_id: int, user_telegram_id: int) -> None:

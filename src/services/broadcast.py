@@ -41,8 +41,10 @@ class BroadcastService(BaseService):
 
     async def create(self, broadcast: BroadcastDto) -> BroadcastDto:
         db_broadcast = Broadcast(**broadcast.model_dump())
-        db_created_broadcast = await self.uow.repository.broadcasts.create(db_broadcast)
-        await self.uow.commit()
+
+        async with self.uow:
+            db_created_broadcast = await self.uow.repository.broadcasts.create(db_broadcast)
+
         logger.info(f"Created broadcast '{broadcast.task_id}'")
         return BroadcastDto.from_model(db_created_broadcast)  # type: ignore[return-value]
 
@@ -59,11 +61,15 @@ class BroadcastService(BaseService):
             )
             for m in messages
         ]
-        db_created_messages = await self.uow.repository.broadcasts.create_messages(db_messages)
+
+        async with self.uow:
+            db_created_messages = await self.uow.repository.broadcasts.create_messages(db_messages)
+
         return BroadcastMessageDto.from_model_list(db_created_messages)
 
     async def get(self, task_id: UUID) -> Optional[BroadcastDto]:
-        db_broadcast = await self.uow.repository.broadcasts.get(task_id)
+        async with self.uow:
+            db_broadcast = await self.uow.repository.broadcasts.get(task_id)
 
         if db_broadcast:
             logger.debug(f"Retrieved broadcast '{task_id}'")
@@ -73,14 +79,17 @@ class BroadcastService(BaseService):
         return BroadcastDto.from_model(db_broadcast)
 
     async def get_all(self) -> list[BroadcastDto]:
-        db_broadcasts = await self.uow.repository.broadcasts.get_all()
+        async with self.uow:
+            db_broadcasts = await self.uow.repository.broadcasts.get_all()
+
         return BroadcastDto.from_model_list(list(reversed(db_broadcasts)))
 
     async def update(self, broadcast: BroadcastDto) -> Optional[BroadcastDto]:
-        db_updated_broadcast = await self.uow.repository.broadcasts.update(
-            task_id=broadcast.task_id,
-            **broadcast.changed_data,
-        )
+        async with self.uow:
+            db_updated_broadcast = await self.uow.repository.broadcasts.update(
+                task_id=broadcast.task_id,
+                **broadcast.changed_data,
+            )
 
         if db_updated_broadcast:
             logger.info(f"Updated broadcast '{broadcast.task_id}' successfully")
@@ -93,22 +102,27 @@ class BroadcastService(BaseService):
         return BroadcastDto.from_model(db_updated_broadcast)
 
     async def update_message(self, broadcast_id: int, message: BroadcastMessageDto) -> None:
-        await self.uow.repository.broadcasts.update_message(
-            broadcast_id=broadcast_id,
-            user_id=message.user_id,
-            **message.changed_data,
-        )
+        async with self.uow:
+            await self.uow.repository.broadcasts.update_message(
+                broadcast_id=broadcast_id,
+                user_id=message.user_id,
+                **message.changed_data,
+            )
 
     async def bulk_update_messages(self, messages: list[BroadcastMessageDto]) -> None:
-        await self.uow.repository.broadcasts.bulk_update_messages(
-            data=[m.model_dump() for m in messages],
-        )
+        async with self.uow:
+            await self.uow.repository.broadcasts.bulk_update_messages(
+                data=[m.model_dump() for m in messages],
+            )
 
     async def delete_broadcast(self, broadcast_id: int) -> None:
-        await self.uow.repository.broadcasts._delete(Broadcast, Broadcast.id == broadcast_id)
+        async with self.uow:
+            await self.uow.repository.broadcasts._delete(Broadcast, Broadcast.id == broadcast_id)
 
     async def get_status(self, task_id: UUID) -> Optional[BroadcastStatus]:
-        db_broadcast = await self.uow.repository.broadcasts.get(task_id)
+        async with self.uow:
+            db_broadcast = await self.uow.repository.broadcasts.get(task_id)
+
         return db_broadcast.status if db_broadcast else None
 
     #
@@ -127,7 +141,9 @@ class BroadcastService(BaseService):
 
         if audience == BroadcastAudience.PLAN:
             if plan_id:
-                db_subs = await self.uow.repository.subscriptions.filter_by_plan_id(plan_id)
+                async with self.uow:
+                    db_subs = await self.uow.repository.subscriptions.filter_by_plan_id(plan_id)
+
                 active_subs = [
                     s
                     for s in db_subs
@@ -137,43 +153,62 @@ class BroadcastService(BaseService):
                 ]
                 return len(active_subs)
 
-            count = await self.uow.repository.plans._count(
-                Plan,
-                Plan.availability != PlanAvailability.TRIAL,
-            )
+            async with self.uow:
+                count = await self.uow.repository.plans._count(
+                    Plan,
+                    Plan.availability != PlanAvailability.TRIAL,
+                )
+
             logger.debug(f"Audience count for '{audience}' (plan={plan_id}) is '{count}'")
             return count
 
         if audience == BroadcastAudience.ALL:
-            return await self.uow.repository.users._count(User, is_not_block)
+            async with self.uow:
+                result = await self.uow.repository.users._count(User, is_not_block)
+            return result
 
         if audience == BroadcastAudience.SUBSCRIBED:
             conditions = and_(
                 is_not_block,
                 User.current_subscription.has(Subscription.status == SubscriptionStatus.ACTIVE),
             )
-            return await self.uow.repository.users._count(User, conditions)
+
+            async with self.uow:
+                result = await self.uow.repository.users._count(User, conditions)
+
+            return result
 
         if audience == BroadcastAudience.UNSUBSCRIBED:
             conditions = and_(
                 is_not_block,
                 User.current_subscription_id.is_(None),
             )
-            return await self.uow.repository.users._count(User, conditions)
+
+            async with self.uow:
+                result = await self.uow.repository.users._count(User, conditions)
+            return result
 
         if audience == BroadcastAudience.EXPIRED:
             conditions = and_(
                 is_not_block,
                 User.current_subscription.has(Subscription.status == SubscriptionStatus.EXPIRED),
             )
-            return await self.uow.repository.users._count(User, conditions)
+
+            async with self.uow:
+                result = await self.uow.repository.users._count(User, conditions)
+
+            return result
 
         if audience == BroadcastAudience.TRIAL:
             conditions = and_(
                 is_not_block,
                 User.current_subscription.has(Subscription.is_trial.is_(True)),
             )
-            return await self.uow.repository.users._count(User, conditions)
+
+            async with self.uow:
+                result = await self.uow.repository.users._count(User, conditions)
+
+            return result
 
         raise Exception(f"Unknown broadcast audience: {audience}")
 
@@ -190,7 +225,11 @@ class BroadcastService(BaseService):
         )
 
         if audience == BroadcastAudience.PLAN and plan_id:
-            db_subscriptions = await self.uow.repository.subscriptions.filter_by_plan_id(plan_id)
+            async with self.uow:
+                db_subscriptions = await self.uow.repository.subscriptions.filter_by_plan_id(
+                    plan_id
+                )
+
             active_subs = [
                 s
                 for s in db_subscriptions
@@ -199,14 +238,19 @@ class BroadcastService(BaseService):
                 and not s.user.is_bot_blocked
             ]
             user_ids = [sub.user_telegram_id for sub in active_subs]
-            db_users = await self.uow.repository.users.get_by_ids(telegram_ids=user_ids)
+
+            async with self.uow:
+                db_users = await self.uow.repository.users.get_by_ids(telegram_ids=user_ids)
+
             logger.debug(
                 f"Retrieved '{len(db_users)}' users for audience '{audience}' (plan={plan_id})"
             )
             return UserDto.from_model_list(db_users)
 
         if audience == BroadcastAudience.ALL:
-            db_users = await self.uow.repository.users._get_many(User, is_not_block)
+            async with self.uow:
+                db_users = await self.uow.repository.users._get_many(User, is_not_block)
+
             return UserDto.from_model_list(db_users)
 
         if audience == BroadcastAudience.SUBSCRIBED:
@@ -214,12 +258,18 @@ class BroadcastService(BaseService):
                 is_not_block,
                 User.current_subscription.has(Subscription.status == SubscriptionStatus.ACTIVE),
             )
-            db_users = await self.uow.repository.users._get_many(User, conditions)
+
+            async with self.uow:
+                db_users = await self.uow.repository.users._get_many(User, conditions)
+
             return UserDto.from_model_list(db_users)
 
         if audience == BroadcastAudience.UNSUBSCRIBED:
             conditions = and_(is_not_block, User.current_subscription_id.is_(None))
-            db_users = await self.uow.repository.users._get_many(User, conditions)
+
+            async with self.uow:
+                db_users = await self.uow.repository.users._get_many(User, conditions)
+
             return UserDto.from_model_list(db_users)
 
         if audience == BroadcastAudience.EXPIRED:
@@ -227,7 +277,10 @@ class BroadcastService(BaseService):
                 is_not_block,
                 User.current_subscription.has(Subscription.status == SubscriptionStatus.EXPIRED),
             )
-            db_users = await self.uow.repository.users._get_many(User, conditions)
+
+            async with self.uow:
+                db_users = await self.uow.repository.users._get_many(User, conditions)
+
             return UserDto.from_model_list(db_users)
 
         if audience == BroadcastAudience.TRIAL:
@@ -235,7 +288,10 @@ class BroadcastService(BaseService):
                 is_not_block,
                 User.current_subscription.has(Subscription.is_trial.is_(True)),
             )
-            db_users = await self.uow.repository.users._get_many(User, conditions)
+
+            async with self.uow:
+                db_users = await self.uow.repository.users._get_many(User, conditions)
+
             return UserDto.from_model_list(db_users)
 
         raise Exception(f"Unknown broadcast audience: {audience}")

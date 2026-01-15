@@ -38,7 +38,9 @@ class SettingsService(BaseService):
     async def create(self) -> SettingsDto:
         settings = SettingsDto()
         db_settings = Settings(**settings.prepare_init_data())
-        db_settings = await self.uow.repository.settings.create(db_settings)
+
+        async with self.uow:
+            db_settings = await self.uow.repository.settings.create(db_settings)
 
         await self._clear_cache()
         logger.info("Default settings created in DB")
@@ -46,7 +48,9 @@ class SettingsService(BaseService):
 
     @redis_cache(prefix="get_settings", ttl=TIME_10M)
     async def get(self) -> SettingsDto:
-        db_settings = await self.uow.repository.settings.get()
+        async with self.uow:
+            db_settings = await self.uow.repository.settings.get()
+
         if not db_settings:
             return await self.create()
         else:
@@ -65,7 +69,10 @@ class SettingsService(BaseService):
             settings.referral = settings.referral
 
         changed_data = settings.prepare_changed_data()
-        db_updated_settings = await self.uow.repository.settings.update(**changed_data)
+
+        async with self.uow:
+            db_updated_settings = await self.uow.repository.settings.update(**changed_data)
+
         await self._clear_cache()
 
         if changed_data:

@@ -32,17 +32,19 @@ class PlanService(BaseService):
         self.uow = uow
 
     async def create(self, plan: PlanDto) -> PlanDto:
-        order_index = await self.uow.repository.plans.get_max_index()
-        order_index = (order_index or 0) + 1
-        plan.order_index = order_index
+        async with self.uow:
+            order_index = await self.uow.repository.plans.get_max_index()
+            order_index = (order_index or 0) + 1
+            plan.order_index = order_index
+            db_plan = self._dto_to_model(plan)
+            db_created_plan = await self.uow.repository.plans.create(db_plan)
 
-        db_plan = self._dto_to_model(plan)
-        db_created_plan = await self.uow.repository.plans.create(db_plan)
         logger.info(f"Created plan '{plan.name}' with ID '{db_created_plan.id}'")
         return PlanDto.from_model(db_created_plan)  # type: ignore[return-value]
 
     async def get(self, plan_id: int) -> Optional[PlanDto]:
-        db_plan = await self.uow.repository.plans.get(plan_id)
+        async with self.uow:
+            db_plan = await self.uow.repository.plans.get(plan_id)
 
         if db_plan:
             logger.debug(f"Retrieved plan '{plan_id}'")
@@ -52,7 +54,8 @@ class PlanService(BaseService):
         return PlanDto.from_model(db_plan)
 
     async def get_by_name(self, plan_name: str) -> Optional[PlanDto]:
-        db_plan = await self.uow.repository.plans.get_by_name(plan_name)
+        async with self.uow:
+            db_plan = await self.uow.repository.plans.get_by_name(plan_name)
 
         if db_plan:
             logger.debug(f"Retrieved plan by name '{plan_name}'")
@@ -62,13 +65,17 @@ class PlanService(BaseService):
         return PlanDto.from_model(db_plan)
 
     async def get_all(self) -> list[PlanDto]:
-        db_plans = await self.uow.repository.plans.get_all()
+        async with self.uow:
+            db_plans = await self.uow.repository.plans.get_all()
+
         logger.debug(f"Retrieved '{len(db_plans)}' plans")
         return PlanDto.from_model_list(db_plans)
 
     async def update(self, plan: PlanDto) -> Optional[PlanDto]:
         db_plan = self._dto_to_model(plan)
-        db_updated_plan = await self.uow.repository.plans.update(db_plan)
+
+        async with self.uow:
+            db_updated_plan = await self.uow.repository.plans.update(db_plan)
 
         if db_updated_plan:
             logger.info(f"Updated plan '{plan.name}' (ID: '{plan.id}') successfully")
@@ -81,7 +88,8 @@ class PlanService(BaseService):
         return PlanDto.from_model(db_updated_plan)
 
     async def delete(self, plan_id: int) -> bool:
-        result = await self.uow.repository.plans.delete(plan_id)
+        async with self.uow:
+            result = await self.uow.repository.plans.delete(plan_id)
 
         if result:
             logger.info(f"Plan '{plan_id}' deleted successfully")
@@ -91,16 +99,18 @@ class PlanService(BaseService):
         return result
 
     async def count(self) -> int:
-        count = await self.uow.repository.plans.count()
+        async with self.uow:
+            count = await self.uow.repository.plans.count()
         logger.debug(f"Total plans count: '{count}'")
         return count
 
     #
 
     async def get_trial_plan(self) -> Optional[PlanDto]:
-        db_plans: list[Plan] = await self.uow.repository.plans.filter_by_availability(
-            availability=PlanAvailability.TRIAL
-        )
+        async with self.uow:
+            db_plans: list[Plan] = await self.uow.repository.plans.filter_by_availability(
+                availability=PlanAvailability.TRIAL
+            )
 
         if db_plans:
             if len(db_plans) > 1:
@@ -123,7 +133,9 @@ class PlanService(BaseService):
     async def get_available_plans(self, user: UserDto) -> list[PlanDto]:
         logger.debug(f"Fetching available plans for user '{user.telegram_id}'")
 
-        db_plans: list[Plan] = await self.uow.repository.plans.filter_active(is_active=True)
+        async with self.uow:
+            db_plans: list[Plan] = await self.uow.repository.plans.filter_active(is_active=True)
+
         logger.debug(f"Total active plans retrieved: '{len(db_plans)}'")
         db_filtered_plans = []
 
@@ -163,9 +175,10 @@ class PlanService(BaseService):
         return PlanDto.from_model_list(db_filtered_plans)
 
     async def get_allowed_plans(self) -> list[PlanDto]:
-        db_plans: list[Plan] = await self.uow.repository.plans.filter_by_availability(
-            availability=PlanAvailability.ALLOWED,
-        )
+        async with self.uow:
+            db_plans: list[Plan] = await self.uow.repository.plans.filter_by_availability(
+                availability=PlanAvailability.ALLOWED,
+            )
 
         if db_plans:
             logger.debug(
@@ -177,24 +190,25 @@ class PlanService(BaseService):
         return PlanDto.from_model_list(db_plans)
 
     async def move_plan_up(self, plan_id: int) -> bool:
-        db_plans = await self.uow.repository.plans.get_all()
-        db_plans.sort(key=lambda p: p.order_index)
+        async with self.uow:
+            db_plans = await self.uow.repository.plans.get_all()
+            db_plans.sort(key=lambda p: p.order_index)
 
-        index = next((i for i, p in enumerate(db_plans) if p.id == plan_id), None)
-        if index is None:
-            logger.warning(f"Plan with ID '{plan_id}' not found for move operation")
-            return False
+            index = next((i for i, p in enumerate(db_plans) if p.id == plan_id), None)
+            if index is None:
+                logger.warning(f"Plan with ID '{plan_id}' not found for move operation")
+                return False
 
-        if index == 0:
-            plan = db_plans.pop(0)
-            db_plans.append(plan)
-            logger.debug(f"Plan '{plan_id}' moved from top to bottom")
-        else:
-            db_plans[index - 1], db_plans[index] = db_plans[index], db_plans[index - 1]
-            logger.debug(f"Plan '{plan_id}' moved up one position")
+            if index == 0:
+                plan = db_plans.pop(0)
+                db_plans.append(plan)
+                logger.debug(f"Plan '{plan_id}' moved from top to bottom")
+            else:
+                db_plans[index - 1], db_plans[index] = db_plans[index], db_plans[index - 1]
+                logger.debug(f"Plan '{plan_id}' moved up one position")
 
-        for i, plan in enumerate(db_plans, start=1):
-            plan.order_index = i
+            for i, plan in enumerate(db_plans, start=1):
+                plan.order_index = i
 
         logger.info(f"Plan '{plan_id}' reorder successfully")
         return True

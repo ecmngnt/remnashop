@@ -1,12 +1,11 @@
 import asyncio
 from typing import Any, Union, cast
 
-from aiogram.types import BufferedInputFile
 from dishka.integrations.taskiq import FromDishka, inject
 
 from src.bot.keyboards import get_buy_keyboard, get_renew_keyboard
 from src.core.constants import BATCH_DELAY, BATCH_SIZE
-from src.core.enums import MediaType, UserNotificationType
+from src.core.enums import UserNotificationType
 from src.core.utils.iterables import chunked
 from src.core.utils.message_payload import MessagePayload
 from src.core.utils.types import RemnaUserDto
@@ -23,13 +22,11 @@ async def send_error_notification_task(
     payload: MessagePayload,
     notification_service: FromDishka[NotificationService],
 ) -> None:
-    file_data = BufferedInputFile(
-        file=traceback_str.encode(),
-        filename=f"error_{error_id}.txt",
+    await notification_service.error_notify(
+        traceback_str=traceback_str,
+        payload=payload,
+        error_id=error_id,
     )
-    payload.media = file_data
-    payload.media_type = MediaType.DOCUMENT
-    await notification_service.notify_super_dev(payload=payload)
 
 
 @broker.task

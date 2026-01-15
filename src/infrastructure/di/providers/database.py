@@ -43,5 +43,5 @@ class DatabaseProvider(Provider):
         self,
         session_maker: async_sessionmaker[AsyncSession],
     ) -> AsyncIterable[UnitOfWork]:
-        async with UnitOfWork(session_maker) as uow:
-            yield uow
+        uow = UnitOfWork(session_maker)
+        yield uow

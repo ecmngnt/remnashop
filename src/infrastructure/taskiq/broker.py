@@ -8,8 +8,17 @@ from src.infrastructure.taskiq.middlewares import ErrorMiddleware
 
 
 def create_broker(config: AppConfig) -> RedisStreamBroker:
-    result_backend: AsyncResultBackend[Any] = RedisAsyncResultBackend(redis_url=config.redis.dsn)
-    broker = RedisStreamBroker(url=config.redis.dsn).with_result_backend(result_backend)
+    result_backend: AsyncResultBackend[Any] = RedisAsyncResultBackend(
+        redis_url=config.redis.dsn,
+        keep_results=False,
+        result_ex_time=3600,
+    )
+
+    broker = RedisStreamBroker(
+        url=config.redis.dsn,
+        maxlen=1000,
+    ).with_result_backend(result_backend)
+
     return broker
 
 

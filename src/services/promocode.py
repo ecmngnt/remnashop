@@ -35,7 +35,8 @@ class PromocodeService(BaseService):
         pass
 
     async def get(self, promocode_id: int) -> Optional[PromocodeDto]:
-        db_promocode = await self.uow.repository.promocodes.get(promocode_id)
+        async with self.uow:
+            db_promocode = await self.uow.repository.promocodes.get(promocode_id)
 
         if db_promocode:
             logger.debug(f"Retrieved promocode '{promocode_id}'")
@@ -45,7 +46,8 @@ class PromocodeService(BaseService):
         return PromocodeDto.from_model(db_promocode)
 
     async def get_by_code(self, promocode_code: str) -> Optional[PromocodeDto]:
-        db_promocode = await self.uow.repository.promocodes.get_by_code(promocode_code)
+        async with self.uow:
+            db_promocode = await self.uow.repository.promocodes.get_by_code(promocode_code)
 
         if db_promocode:
             logger.debug(f"Retrieved promocode by code '{promocode_code}'")
@@ -55,15 +57,18 @@ class PromocodeService(BaseService):
         return PromocodeDto.from_model(db_promocode)
 
     async def get_all(self) -> list[PromocodeDto]:
-        db_promocodes = await self.uow.repository.promocodes.get_all()
+        async with self.uow:
+            db_promocodes = await self.uow.repository.promocodes.get_all()
+
         logger.debug(f"Retrieved '{len(db_promocodes)}' promocodes")
         return PromocodeDto.from_model_list(db_promocodes)
 
     async def update(self, promocode: PromocodeDto) -> Optional[PromocodeDto]:
-        db_updated_promocode = await self.uow.repository.promocodes.update(
-            promocode_id=promocode.id,  # type: ignore[arg-type]
-            **promocode.changed_data,
-        )
+        async with self.uow:
+            db_updated_promocode = await self.uow.repository.promocodes.update(
+                promocode_id=promocode.id,  # type: ignore[arg-type]
+                **promocode.changed_data,
+            )
 
         if db_updated_promocode:
             logger.info(f"Updated promocode '{promocode.code}' successfully")
@@ -76,7 +81,8 @@ class PromocodeService(BaseService):
         return PromocodeDto.from_model(db_updated_promocode)
 
     async def delete(self, promocode_id: int) -> bool:
-        result = await self.uow.repository.promocodes.delete(promocode_id)
+        async with self.uow:
+            result = await self.uow.repository.promocodes.delete(promocode_id)
 
         if result:
             logger.info(f"Promocode '{promocode_id}' deleted successfully")
@@ -89,13 +95,17 @@ class PromocodeService(BaseService):
         return result
 
     async def filter_by_type(self, promocode_type: PromocodeRewardType) -> list[PromocodeDto]:
-        db_promocodes = await self.uow.repository.promocodes.filter_by_type(promocode_type)
+        async with self.uow:
+            db_promocodes = await self.uow.repository.promocodes.filter_by_type(promocode_type)
+
         logger.debug(
             f"Filtered promocodes by type '{promocode_type}', found '{len(db_promocodes)}'"
         )
         return PromocodeDto.from_model_list(db_promocodes)
 
     async def filter_active(self, is_active: bool = True) -> list[PromocodeDto]:
-        db_promocodes = await self.uow.repository.promocodes.filter_active(is_active)
+        async with self.uow:
+            db_promocodes = await self.uow.repository.promocodes.filter_active(is_active)
+
         logger.debug(f"Filtered active promocodes: '{is_active}', found '{len(db_promocodes)}'")
         return PromocodeDto.from_model_list(db_promocodes)
