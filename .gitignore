@@ -9,6 +9,11 @@ traefik
 logs/*
 !logs/.gitkeep
 
+# Documentation (exclude root MD files except README)
+/*.md
+!README.md
+!README.*.md
+
 # Environment
 .venv/
 .env

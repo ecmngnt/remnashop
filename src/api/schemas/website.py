@@ -128,3 +128,36 @@ class SettingsResponse(BaseModel):
     supported_currencies: list[str]
     telegram_bot_username: str
     support_url: Optional[str] = None
+
+
+class ReferralStatsResponse(BaseModel):
+    referral_count: int
+    reward_count: int
+    total_points: int
+    total_extra_days: int
+    referral_link: str
+
+
+class TransactionResponse(BaseModel):
+    id: int
+    payment_id: str
+    status: str
+    amount: str
+    currency: str
+    gateway_type: str
+    purchase_type: str
+    is_test: bool
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+    plan_name: Optional[str] = None
+    plan_duration: Optional[int] = None
+
+
+class SubscriptionConfigResponse(BaseModel):
+    subscription_url: str
+    qr_code_url: Optional[str] = None
+
+
+class BalanceResponse(BaseModel):
+    points: int
+    personal_discount: int
