@@ -9,16 +9,24 @@ from src.core.config import AppConfig
 from src.core.constants import ENCRYPTED_PREFIX
 from src.core.utils import json_utils
 
-config = AppConfig.get()
-_cipher_suite = Fernet(config.crypt_key.get_secret_value().encode())
+_cipher_suite = None
+
+
+def _get_cipher_suite():
+    """Lazy initialization of cipher suite to avoid circular imports."""
+    global _cipher_suite
+    if _cipher_suite is None:
+        config = AppConfig.get()
+        _cipher_suite = Fernet(config.crypt_key.get_secret_value().encode())
+    return _cipher_suite
 
 
 def encrypt(data: str) -> str:
-    return ENCRYPTED_PREFIX + _cipher_suite.encrypt(data.encode()).decode()
+    return ENCRYPTED_PREFIX + _get_cipher_suite().encrypt(data.encode()).decode()
 
 
 def decrypt(data: str) -> str:
-    return _cipher_suite.decrypt(data.removeprefix(ENCRYPTED_PREFIX).encode()).decode()
+    return _get_cipher_suite().decrypt(data.removeprefix(ENCRYPTED_PREFIX).encode()).decode()
 
 
 def get_webhook_hash(webhook_data: dict) -> str:
